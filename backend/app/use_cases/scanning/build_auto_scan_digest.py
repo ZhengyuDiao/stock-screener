@@ -78,26 +78,31 @@ def build_auto_scan_digest(
         raise ValueError("limit must be between 1 and 100")
 
     with uow:
-        scan = next(
-            (
-                candidate
-                for candidate in uow.scans.list_recent(limit=100, market=market_code)
-                if candidate.status == "completed"
-                and candidate.trigger_source == "auto"
-                and candidate.feature_run_id is not None
-            ),
-            None,
-        )
-        if scan is None:
+        scans = [
+            candidate
+            for candidate in uow.scans.list_recent(limit=100, market=market_code)
+            if candidate.status == "completed"
+            and candidate.trigger_source == "auto"
+            and candidate.feature_run_id is not None
+        ]
+        if not scans:
             raise AutoScanDigestUnavailableError(
                 f"No completed Auto scan is available for {market_code}."
             )
 
-        feature_run = uow.feature_runs.get_run(scan.feature_run_id)
-        if feature_run is None:
+        scans_with_runs = [
+            (candidate, uow.feature_runs.get_run(candidate.feature_run_id))
+            for candidate in scans
+        ]
+        scans_with_runs = [pair for pair in scans_with_runs if pair[1] is not None]
+        if not scans_with_runs:
             raise AutoScanDigestUnavailableError(
-                f"Feature run {scan.feature_run_id} for scan {scan.scan_id} was not found."
+                f"No feature run is available for completed Auto scans in {market_code}."
             )
+        scan, feature_run = max(
+            scans_with_runs,
+            key=lambda pair: pair[1].as_of_date,
+        )
 
         as_of_date = feature_run.as_of_date
         if as_of_date != expected_date and not allow_stale:

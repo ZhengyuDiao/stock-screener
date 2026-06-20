@@ -121,7 +121,24 @@ def _upsert_feature_run_pointer(*, session_factory, pointer_key: str, run_id: in
     """Ensure a published-run pointer references *run_id*."""
     from sqlalchemy.exc import IntegrityError
 
-    from app.infra.db.models.feature_store import FeatureRunPointer
+    from app.infra.db.models.feature_store import FeatureRun, FeatureRunPointer
+
+    def advance_pointer(db, pointer) -> None:
+        if pointer is None:
+            db.add(FeatureRunPointer(key=pointer_key, run_id=run_id))
+            return
+
+        current = db.get(FeatureRun, pointer.run_id)
+        candidate = db.get(FeatureRun, run_id)
+        candidate_date = getattr(candidate, "as_of_date", None)
+        current_date = getattr(current, "as_of_date", None)
+        if candidate is not None and (
+            current is None
+            or not isinstance(candidate_date, date)
+            or not isinstance(current_date, date)
+            or candidate_date >= current_date
+        ):
+            pointer.run_id = run_id
 
     with session_factory() as db:
         try:
@@ -130,10 +147,7 @@ def _upsert_feature_run_pointer(*, session_factory, pointer_key: str, run_id: in
                 .filter(FeatureRunPointer.key == pointer_key)
                 .first()
             )
-            if pointer is None:
-                db.add(FeatureRunPointer(key=pointer_key, run_id=run_id))
-            else:
-                pointer.run_id = run_id
+            advance_pointer(db, pointer)
             db.commit()
         except IntegrityError:
             db.rollback()
@@ -142,10 +156,7 @@ def _upsert_feature_run_pointer(*, session_factory, pointer_key: str, run_id: in
                 .filter(FeatureRunPointer.key == pointer_key)
                 .first()
             )
-            if pointer is None:
-                db.add(FeatureRunPointer(key=pointer_key, run_id=run_id))
-            else:
-                pointer.run_id = run_id
+            advance_pointer(db, pointer)
             db.commit()
 
 

@@ -237,6 +237,23 @@ class TestPublishAtomically:
         assert len(pointers) == 1
         assert pointers[0].run_id == run2.id
 
+    def test_older_backfill_does_not_move_pointer_backwards(
+        self, repo: SqlFeatureRunRepository, session: Session
+    ):
+        latest = repo.start_run(date(2026, 2, 17), RunType.DAILY_SNAPSHOT)
+        repo.mark_completed(latest.id, _make_stats())
+        repo.publish_atomically(latest.id, pointer_key="latest_published_market:HK")
+
+        older = repo.start_run(date(2026, 2, 16), RunType.DAILY_SNAPSHOT)
+        repo.mark_completed(older.id, _make_stats())
+        result = repo.publish_atomically(
+            older.id, pointer_key="latest_published_market:HK"
+        )
+
+        pointer = session.get(FeatureRunPointer, "latest_published_market:HK")
+        assert result.status == RunStatus.PUBLISHED
+        assert pointer.run_id == latest.id
+
     def test_non_completed_raises_invalid_transition(self, repo: SqlFeatureRunRepository):
         run = repo.start_run(date(2026, 2, 17), RunType.DAILY_SNAPSHOT)
         # Still RUNNING — can't publish

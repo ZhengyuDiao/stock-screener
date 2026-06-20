@@ -633,6 +633,11 @@ def test_upsert_feature_run_pointer_retries_after_integrity_error():
         def add(self, obj):
             self.added.append(obj)
 
+        def get(self, _model, run_id):
+            return SimpleNamespace(
+                as_of_date=date(2026, 3, 16) if run_id == 84 else date(2026, 3, 15)
+            )
+
         def commit(self):
             self.commit_calls += 1
             if self.commit_calls == 1:

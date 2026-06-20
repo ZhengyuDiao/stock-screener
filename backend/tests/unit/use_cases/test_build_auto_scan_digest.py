@@ -15,9 +15,11 @@ from app.use_cases.scanning.build_auto_scan_digest import (
 
 
 class FakeUow:
-    def __init__(self, *, scans, feature_run, page):
+    def __init__(self, *, scans, feature_run, page, feature_runs=None):
         self.scans = SimpleNamespace(list_recent=lambda **_kwargs: scans)
-        self.feature_runs = SimpleNamespace(get_run=lambda _run_id: feature_run)
+        self.feature_runs = SimpleNamespace(
+            get_run=lambda run_id: (feature_runs or {}).get(run_id, feature_run)
+        )
         self.query_calls = []
 
         def query_run(run_id, query_spec, **kwargs):
@@ -112,6 +114,28 @@ def test_rejects_stale_auto_scan_by_default():
 
     assert exc_info.value.actual_date == date(2026, 6, 16)
     assert uow.query_calls == []
+
+
+def test_selects_newest_market_date_when_older_backfill_was_published_last():
+    newest_date = date(2026, 6, 17)
+    uow = FakeUow(
+        scans=[_scan(feature_run_id=22), _scan(feature_run_id=20)],
+        feature_run=None,
+        feature_runs={
+            22: SimpleNamespace(as_of_date=date(2026, 6, 15)),
+            20: SimpleNamespace(as_of_date=newest_date),
+        },
+        page=ResultPage(items=(_item(),), total=1, page=1, per_page=10),
+    )
+
+    digest = build_auto_scan_digest(
+        uow,
+        market="HK",
+        expected_date=newest_date,
+    )
+
+    assert digest.as_of_date == newest_date
+    assert uow.query_calls[0][0] == 20
 
 
 def test_allows_stale_scan_for_explicit_manual_inspection():

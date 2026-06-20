@@ -145,7 +145,9 @@ class SqlFeatureRunRepository(FeatureRunRepository):
             pointer = FeatureRunPointer(key=pointer_key, run_id=run_id)
             self._session.add(pointer)
         else:
-            pointer.run_id = run_id
+            current = self._session.get(FeatureRun, pointer.run_id)
+            if current is None or row.as_of_date >= current.as_of_date:
+                pointer.run_id = run_id
 
         self._session.flush()
         return self._to_domain(row)
