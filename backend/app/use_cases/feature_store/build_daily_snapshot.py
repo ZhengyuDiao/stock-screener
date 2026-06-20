@@ -172,6 +172,7 @@ def _serialize_universe_definition(universe_def: object) -> dict[str, object]:
         "listing_tier",
         "symbols",
         "allow_inactive_symbols",
+        "fresh_only",
     ):
         value = getattr(universe_def, key, None)
         if value is None:

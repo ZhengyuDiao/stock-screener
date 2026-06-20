@@ -77,6 +77,7 @@ class UniverseDefinition(BaseModel):
     listing_tier: Optional[str] = None
     symbols: Optional[List[str]] = None
     allow_inactive_symbols: bool = False
+    fresh_only: bool = False
 
     @field_validator("mic", mode="before")
     @classmethod
@@ -125,6 +126,7 @@ class UniverseDefinition(BaseModel):
                 or self.listing_tier is not None
                 or self.symbols is not None
                 or self.allow_inactive_symbols
+                or self.fresh_only
             ):
                 raise ValueError(
                     "ALL universe must not specify market, mic, exchange, index, "
@@ -151,6 +153,7 @@ class UniverseDefinition(BaseModel):
                 or self.listing_tier is not None
                 or self.symbols is not None
                 or self.allow_inactive_symbols
+                or self.fresh_only
             ):
                 raise ValueError(
                     "EXCHANGE universe must not specify mic, index, listing_tier, "
@@ -168,6 +171,7 @@ class UniverseDefinition(BaseModel):
                 or self.listing_tier is not None
                 or self.symbols is not None
                 or self.allow_inactive_symbols
+                or self.fresh_only
             ):
                 raise ValueError(
                     "INDEX universe must not specify market, mic, exchange, "
@@ -185,6 +189,7 @@ class UniverseDefinition(BaseModel):
                 or self.exchange is not None
                 or self.index is not None
                 or self.listing_tier is not None
+                or self.fresh_only
             ):
                 raise ValueError(
                     f"{t.value.upper()} universe must not specify market, mic, "
@@ -230,6 +235,8 @@ class UniverseDefinition(BaseModel):
                 key = f"{key}:mic:{self.mic}"
             if self.listing_tier is not None:
                 key = f"{key}:tier:{self.listing_tier}"
+            if self.fresh_only:
+                key = f"{key}:fresh:true"
             return key
         elif self.type == UniverseType.EXCHANGE:
             if self.market is not None and self.market != Market.US:
@@ -275,7 +282,8 @@ class UniverseDefinition(BaseModel):
                 Market.CN: "China A-shares",
                 Market.SG: "Singapore Market",
             }
-            return market_labels.get(self.market, f"{self.market.value} Market")
+            label = market_labels.get(self.market, f"{self.market.value} Market")
+            return f"Fresh {label}" if self.fresh_only else label
         elif self.type == UniverseType.EXCHANGE:
             return self.exchange.value
         elif self.type == UniverseType.INDEX:
@@ -322,6 +330,7 @@ class UniverseDefinition(BaseModel):
             resolved_market = universe_market
             market = exchange = index = None
             mic = listing_tier = None
+            fresh_only = False
             symbols: Optional[List[str]] = None
 
             if parsed_type == UniverseType.MARKET:
@@ -334,6 +343,7 @@ class UniverseDefinition(BaseModel):
                 market = Market(resolved_market) if resolved_market else None
                 mic = key_parts.get("mic")
                 listing_tier = key_parts.get("tier")
+                fresh_only = key_parts.get("fresh") == "true"
                 if mic is None and universe_exchange:
                     exchange = Exchange(universe_exchange)
             elif parsed_type == UniverseType.EXCHANGE:
@@ -351,6 +361,7 @@ class UniverseDefinition(BaseModel):
                 index=index,
                 listing_tier=listing_tier,
                 symbols=symbols,
+                fresh_only=fresh_only,
             )
         except Exception:
             return cls(type=UniverseType.ALL)

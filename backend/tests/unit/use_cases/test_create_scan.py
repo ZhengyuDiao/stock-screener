@@ -3,6 +3,7 @@
 import pytest
 
 from app.domain.common.errors import ValidationError
+from app.schemas.universe import Market, UniverseDefinition, UniverseType
 from app.use_cases.scanning.create_scan import (
     ActiveScanConflictError,
     CreateScanCommand,
@@ -316,6 +317,35 @@ class TestFreshnessChecker:
         uc.execute(uow, _make_command())
 
         assert captured == [["AAPL", "MSFT", "GOOGL"]]
+
+    def test_fresh_only_universe_uses_symbol_dates_as_authority(self):
+        uow = _make_uow(["0700.HK"])
+        dispatcher = FakeTaskDispatcher()
+        captured: list[tuple[list[str], bool]] = []
+
+        def checker(symbols, *, require_completed_market_refresh=True):
+            captured.append((list(symbols), require_completed_market_refresh))
+            return None
+
+        universe_def = UniverseDefinition(
+            type=UniverseType.MARKET,
+            market=Market.HK,
+            fresh_only=True,
+        )
+        uc = CreateScanUseCase(dispatcher=dispatcher, freshness_checker=checker)
+        result = uc.execute(
+            uow,
+            _make_command(
+                universe_def=universe_def,
+                universe_label=universe_def.label(),
+                universe_key=universe_def.key(),
+                universe_type=universe_def.type.value,
+                universe_market="HK",
+            ),
+        )
+
+        assert result.status == "queued"
+        assert captured == [(["0700.HK"], False)]
 
     def test_freshness_checker_exception_fails_closed(self):
         """Round 6 CodeRabbit: if the checker itself raises (transient DB

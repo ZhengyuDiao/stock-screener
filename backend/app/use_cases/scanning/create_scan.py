@@ -33,7 +33,7 @@ from app.domain.scanning.signature import (
 from app.schemas.universe import UniverseType
 from app.domain.scanning.ports import TaskDispatcher
 
-FreshnessChecker = Callable[[Iterable[str]], Optional[dict]]
+FreshnessChecker = Callable[..., Optional[dict]]
 
 logger = logging.getLogger(__name__)
 
@@ -361,7 +361,14 @@ class CreateScanUseCase:
             #   - 'all'-universe scans get checked across every resolved market
             #   - unrelated market-wide symbol issues don't block narrow scans
             if self._freshness_checker is not None:
-                staleness_detail = self._freshness_checker(symbols)
+                fresh_only = bool(getattr(cmd.universe_def, "fresh_only", False))
+                if fresh_only:
+                    staleness_detail = self._freshness_checker(
+                        symbols,
+                        require_completed_market_refresh=False,
+                    )
+                else:
+                    staleness_detail = self._freshness_checker(symbols)
                 if staleness_detail is not None:
                     raise StaleMarketDataError(staleness_detail)
 

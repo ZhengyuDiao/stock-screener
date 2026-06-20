@@ -11,7 +11,8 @@ from typing import Any, List, Optional
 from sqlalchemy.orm import Session
 
 from ..schemas.universe import UniverseDefinition, UniverseType
-from ..wiring.bootstrap import get_stock_universe_service
+from ..services.price_history_coverage import classify_price_history
+from ..wiring.bootstrap import get_market_calendar_service, get_stock_universe_service
 from ..services.universe_compat_adapter import resolve_scan_universe_request
 
 logger = logging.getLogger(__name__)
@@ -82,15 +83,35 @@ def resolve_symbols(
         )
 
     elif t == UniverseType.MARKET:
+        service_limit = None if universe_def.fresh_only else limit
         kwargs = {
             "market": universe_def.market.value,
             "exchange": universe_def.mic,
             "sp500_only": False,
-            "limit": limit,
+            "limit": service_limit,
         }
         if universe_def.listing_tier is not None:
             kwargs["listing_tier"] = universe_def.listing_tier
-        return get_stock_universe_service().get_active_symbols(db, **kwargs)
+        symbols = get_stock_universe_service().get_active_symbols(db, **kwargs)
+        if not universe_def.fresh_only:
+            return symbols
+
+        market = universe_def.market.value
+        expected_date = get_market_calendar_service().last_completed_trading_day(market)
+        coverage = classify_price_history(
+            db,
+            symbols=symbols,
+            as_of_date=expected_date,
+        )
+        fresh_symbols = list(coverage.fresh)
+        logger.info(
+            "Fresh-only universe resolved %d/%d symbols for market=%s as_of=%s",
+            len(fresh_symbols),
+            len(symbols),
+            market,
+            expected_date,
+        )
+        return fresh_symbols[:limit] if limit is not None else fresh_symbols
 
     elif t == UniverseType.EXCHANGE:
         return get_stock_universe_service().get_active_symbols(

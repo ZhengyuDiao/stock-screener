@@ -20,6 +20,11 @@ const runtimeUniverseOptions = {
         label: 'All United States',
         universe_def: { type: 'market', market: 'US' },
       },
+      fresh_market: {
+        value: 'market:US:fresh:true',
+        label: 'Fresh Price Data Only',
+        universe_def: { type: 'market', market: 'US', fresh_only: true },
+      },
       mics: [
         {
           value: 'market:US:mic:XNYS',
@@ -48,6 +53,11 @@ const runtimeUniverseOptions = {
         value: 'market:HK',
         label: 'All Hong Kong',
         universe_def: { type: 'market', market: 'HK' },
+      },
+      fresh_market: {
+        value: 'market:HK:fresh:true',
+        label: 'Fresh Price Data Only',
+        universe_def: { type: 'market', market: 'HK', fresh_only: true },
       },
       mics: [
         {
@@ -100,6 +110,11 @@ describe('buildRuntimeUniverseSelections', () => {
         value: 'market:HK',
         label: 'All Hong Kong',
         universe_def: { type: 'market', market: 'HK' },
+      }),
+      expect.objectContaining({
+        value: 'market:HK:fresh:true',
+        label: 'Fresh Price Data Only',
+        universe_def: { type: 'market', market: 'HK', fresh_only: true },
       }),
       expect.objectContaining({
         value: 'market:HK:mic:XHKG',

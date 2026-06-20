@@ -12,6 +12,20 @@ function hasRuntimeUniverseOptions(universeOptions) {
 }
 
 function fallbackUniverseSelections() {
+  const scopesByMarket = Object.fromEntries(
+    Object.entries(UNIVERSE_SCOPES_BY_MARKET).map(([market, options]) => [
+      market,
+      [
+        options[0],
+        {
+          value: `market:${market}:fresh:true`,
+          label: 'Fresh Price Data Only',
+          universe_def: { type: 'market', market, fresh_only: true },
+        },
+        ...options.slice(1),
+      ],
+    ])
+  );
   return {
     markets: UNIVERSE_MARKETS.map((option) => ({
       ...option,
@@ -19,7 +33,7 @@ function fallbackUniverseSelections() {
       disabledReason: null,
     })),
     scopesByMarket: Object.fromEntries(
-      Object.entries(UNIVERSE_SCOPES_BY_MARKET).map(([market, options]) => [
+      Object.entries(scopesByMarket).map(([market, options]) => [
         market,
         options.map((option) => ({
           ...option,
@@ -89,6 +103,12 @@ export function buildRuntimeUniverseSelections(universeOptions, runtimeActivity 
     const scopes = [];
     if (marketOption.market) {
       scopes.push(runtimeScopeOption(marketOption.market, { kind: 'market', ...disabledState }));
+    }
+    if (marketOption.fresh_market) {
+      scopes.push(runtimeScopeOption(marketOption.fresh_market, {
+        kind: 'fresh_market',
+        ...disabledState,
+      }));
     }
     for (const mic of marketOption.mics ?? []) {
       scopes.push(runtimeScopeOption(mic, {

@@ -42,6 +42,8 @@ def parse_market_key_components(universe_key: str | None) -> dict[str, str]:
             components["mic"] = value.upper()
         elif name == "tier":
             components["tier"] = value
+        elif name == "fresh":
+            components["fresh"] = value.lower()
     return components
 
 

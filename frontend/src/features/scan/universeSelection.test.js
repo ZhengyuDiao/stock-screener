@@ -67,6 +67,25 @@ describe('buildUniverseDef', () => {
       listing_tier: 'main_board',
     });
   });
+
+  it('returns the backend-provided fresh-only market definition', () => {
+    const universeSelections = {
+      scopesByMarket: {
+        HK: [
+          {
+            value: 'market:HK:fresh:true',
+            universe_def: { type: 'market', market: 'HK', fresh_only: true },
+          },
+        ],
+      },
+    };
+
+    expect(buildUniverseDef('HK', 'market:HK:fresh:true', universeSelections)).toEqual({
+      type: 'market',
+      market: 'HK',
+      fresh_only: true,
+    });
+  });
 });
 
 describe('getSelectionCount', () => {
@@ -89,6 +108,15 @@ describe('getSelectionCount', () => {
     expect(getSelectionCount('US', 'market', stats)).toBe(5900);
     expect(getSelectionCount('HK', 'market', stats)).toBe(2400);
     expect(getSelectionCount('CN', 'market', stats)).toBe(5492);
+  });
+
+  it('does not reuse the full-market count for fresh-only scopes', () => {
+    expect(getSelectionCount(
+      'HK',
+      'market:HK:fresh:true',
+      stats,
+      { type: 'market', market: 'HK', fresh_only: true }
+    )).toBeNull();
   });
 
   it('returns the by_exchange count for exchange scopes', () => {

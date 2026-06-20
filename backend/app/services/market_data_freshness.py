@@ -31,7 +31,11 @@ def _parse_state_date(value: object) -> date | None:
         return None
 
 
-def check_symbol_freshness(symbols: Iterable[str]) -> Optional[dict]:
+def check_symbol_freshness(
+    symbols: Iterable[str],
+    *,
+    require_completed_market_refresh: bool = True,
+) -> Optional[dict]:
     """Return a 409 detail dict when any symbol lacks fresh cached prices.
 
     Groups the requested symbols by their universe market, compares each group
@@ -95,7 +99,11 @@ def check_symbol_freshness(symbols: Iterable[str]) -> Optional[dict]:
                 state.get("last_refreshed_trading_day") if state else None
             )
             comparison_date = expected_date
-            if state is not None and (state.get("status") != "completed" or observed_date is None):
+            if (
+                require_completed_market_refresh
+                and state is not None
+                and (state.get("status") != "completed" or observed_date is None)
+            ):
                 stale_markets.append({
                     "market": market,
                     "total_symbols": len(market_rows),
@@ -106,7 +114,11 @@ def check_symbol_freshness(symbols: Iterable[str]) -> Optional[dict]:
                     "reason": "refresh_state_missing",
                 })
                 continue
-            if observed_date is not None and observed_date < expected_date:
+            if (
+                require_completed_market_refresh
+                and observed_date is not None
+                and observed_date < expected_date
+            ):
                 stale_markets.append({
                     "market": market,
                     "total_symbols": len(market_rows),
@@ -117,7 +129,7 @@ def check_symbol_freshness(symbols: Iterable[str]) -> Optional[dict]:
                     "reason": "refresh_state_stale",
                 })
                 continue
-            if observed_date is not None:
+            if require_completed_market_refresh and observed_date is not None:
                 comparison_date = observed_date
 
             uncovered = sum(1 for r in market_rows if r.last_date is None)

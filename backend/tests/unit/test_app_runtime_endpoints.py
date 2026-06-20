@@ -139,6 +139,15 @@ async def test_app_capabilities_exposes_catalog_backed_universe_options(client, 
         "market": "US",
     }
     assert markets["HK"]["capabilities"]["official_universe"] is True
+    assert markets["HK"]["fresh_market"] == {
+        "value": "market:HK:fresh:true",
+        "label": "Fresh Price Data Only",
+        "universe_def": {
+            "type": "market",
+            "market": "HK",
+            "fresh_only": True,
+        },
+    }
 
     us_mics = {mic["mic"]: mic for mic in markets["US"]["mics"]}
     assert us_mics["XNYS"]["universe_def"] == {

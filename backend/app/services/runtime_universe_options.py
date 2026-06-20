@@ -16,12 +16,14 @@ def _market_universe(
     *,
     mic: str | None = None,
     listing_tier: str | None = None,
+    fresh_only: bool = False,
 ) -> UniverseDefinition:
     return UniverseDefinition(
         type=UniverseType.MARKET,
         market=market,
         mic=mic,
         listing_tier=listing_tier,
+        fresh_only=fresh_only,
     )
 
 
@@ -111,6 +113,10 @@ def build_runtime_universe_options_payload(
                 "market": _selection(
                     f"All {entry.label}",
                     _market_universe(code),
+                ),
+                "fresh_market": _selection(
+                    "Fresh Price Data Only",
+                    _market_universe(code, fresh_only=True),
                 ),
                 "mics": mics,
                 "mic_aliases": mic_alias_options,

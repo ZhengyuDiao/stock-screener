@@ -136,6 +136,7 @@ class RuntimeUniverseMarketOptionsResponse(BaseModel):
     enabled: bool
     capabilities: MarketCapabilitiesResponse
     market: RuntimeUniverseSelectionResponse
+    fresh_market: RuntimeUniverseSelectionResponse
     mics: list[RuntimeMicUniverseOptionResponse] = Field(default_factory=list)
     mic_aliases: list[RuntimeMicAliasOptionResponse] = Field(default_factory=list)
     indexes: list[RuntimeIndexUniverseOptionResponse] = Field(default_factory=list)

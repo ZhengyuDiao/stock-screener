@@ -42,7 +42,7 @@ export function getSelectionCount(market, scope, universeStats, universeDef = nu
     return null;
   }
   if (universeDef?.type === 'market') {
-    if (universeDef.listing_tier) {
+    if (universeDef.listing_tier || universeDef.fresh_only) {
       return null;
     }
     if (universeDef.mic) {

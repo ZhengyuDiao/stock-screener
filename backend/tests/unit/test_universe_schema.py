@@ -40,6 +40,24 @@ class TestUniverseDefinitionConstruction:
         assert u.type == UniverseType.MARKET
         assert u.market == Market.HK
 
+    def test_market_universe_can_require_fresh_price_data(self):
+        u = UniverseDefinition(
+            type=UniverseType.MARKET,
+            market=Market.HK,
+            fresh_only=True,
+        )
+
+        assert u.fresh_only is True
+        assert u.key() == "market:HK:fresh:true"
+        assert u.label() == "Fresh Hong Kong Market"
+
+        restored = UniverseDefinition.from_scan_fields(
+            universe_type="market",
+            universe_key=u.key(),
+            universe_market="HK",
+        )
+        assert restored == u
+
     def test_market_cn(self):
         u = UniverseDefinition(type=UniverseType.MARKET, market=Market.CN)
         assert u.type == UniverseType.MARKET
@@ -164,6 +182,10 @@ class TestUniverseDefinitionValidation:
     def test_all_with_symbols_raises(self):
         with pytest.raises(ValidationError, match="ALL universe must not specify"):
             UniverseDefinition(type=UniverseType.ALL, symbols=["AAPL"])
+
+    def test_fresh_only_is_rejected_outside_market_universes(self):
+        with pytest.raises(ValidationError, match="ALL universe must not specify"):
+            UniverseDefinition(type=UniverseType.ALL, fresh_only=True)
 
     def test_exchange_without_exchange_raises(self):
         with pytest.raises(ValidationError, match="requires 'exchange' field"):

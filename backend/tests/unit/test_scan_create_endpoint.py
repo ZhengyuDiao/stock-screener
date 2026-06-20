@@ -239,6 +239,7 @@ async def test_create_scan_accepts_market_universe_def(client):
         "listing_tier": None,
         "symbols": None,
         "allow_inactive_symbols": False,
+        "fresh_only": False,
     }
 
 

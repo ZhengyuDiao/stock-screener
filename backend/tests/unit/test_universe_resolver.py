@@ -1,4 +1,6 @@
 """Unit tests for UniverseResolver service."""
+from datetime import date
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -75,6 +77,45 @@ class TestResolveSymbols:
         assert result == ["0700.HK", "9988.HK"]
         mock_service.return_value.get_active_symbols.assert_called_once_with(
             mock_db, market="HK", exchange=None, sp500_only=False, limit=None
+        )
+
+    @patch("app.services.universe_resolver.classify_price_history")
+    @patch("app.services.universe_resolver.get_market_calendar_service")
+    @patch("app.services.universe_resolver.get_stock_universe_service")
+    def test_fresh_market_filters_to_current_price_symbols(
+        self,
+        mock_service,
+        mock_calendar,
+        mock_classify,
+        mock_db,
+    ):
+        mock_service.return_value.get_active_symbols.return_value = [
+            "0700.HK",
+            "2929.HK",
+            "9988.HK",
+        ]
+        mock_calendar.return_value.last_completed_trading_day.return_value = date(2026, 6, 18)
+        mock_classify.return_value = SimpleNamespace(fresh=("0700.HK", "9988.HK"))
+
+        universe = UniverseDefinition(
+            type=UniverseType.MARKET,
+            market=Market.HK,
+            fresh_only=True,
+        )
+        result = resolve_symbols(mock_db, universe, limit=1)
+
+        assert result == ["0700.HK"]
+        mock_service.return_value.get_active_symbols.assert_called_once_with(
+            mock_db,
+            market="HK",
+            exchange=None,
+            sp500_only=False,
+            limit=None,
+        )
+        mock_classify.assert_called_once_with(
+            mock_db,
+            symbols=["0700.HK", "2929.HK", "9988.HK"],
+            as_of_date=date(2026, 6, 18),
         )
 
     @patch("app.services.universe_resolver.get_stock_universe_service")

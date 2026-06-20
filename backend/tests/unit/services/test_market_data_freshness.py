@@ -125,6 +125,23 @@ def test_stale_market_returns_detail():
     assert detail["stale_markets"][0]["oldest_last_cached_date"] == "2026-04-22"
 
 
+def test_symbol_dates_can_be_authoritative_for_fresh_only_universe():
+    from app.services.market_data_freshness import check_symbol_freshness
+
+    rows = [
+        _Row(symbol="0700.HK", market="HK", last_date=date(2026, 4, 23)),
+    ]
+    with (
+        _patch_session(rows),
+        _patch_calendar({"HK": date(2026, 4, 23)}),
+        _patch_refresh_state({"HK": date(2026, 4, 22)}),
+    ):
+        assert check_symbol_freshness(
+            ["0700.HK"],
+            require_completed_market_refresh=False,
+        ) is None
+
+
 def test_unresolved_symbols_flagged_even_if_covered_symbols_are_fresh():
     """Round 4 Codex P2: symbols requested by the scan but missing from
     stock_universe must be treated as stale — the freshness query silently
