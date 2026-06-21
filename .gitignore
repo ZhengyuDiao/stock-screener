@@ -49,6 +49,7 @@ data/*.recovered_*
 data/xui-reader/
 data/hermes/
 data/backups/
+data/openclaw/
 docker-data/
 
 # Logs
