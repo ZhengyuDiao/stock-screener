@@ -16,7 +16,15 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_STATE_FILE = ROOT_DIR / "data" / "openclaw" / "hk-auto-push-state.json"
 DIGEST_COMMAND = ROOT_DIR / "scripts" / "openclaw-hk-top10.sh"
-HEADER_RE = re.compile(r"^港股 Auto 选股 Top \d+｜(?P<date>\d{4}-\d{2}-\d{2})$")
+SUPPORTED_STRATEGIES = (
+    "minervini",
+    "canslim",
+    "ipo",
+    "custom",
+    "volume_breakthrough",
+    "setup_engine",
+)
+HEADER_RE = re.compile(r"^港股 .+?选股 Top \d+｜(?P<date>\d{4}-\d{2}-\d{2})$")
 SCAN_ID_RE = re.compile(r"^Scan ID: (?P<scan_id>\S+)$")
 EXPECTED_DATE_RE = re.compile(r"最新交易日应为 (?P<date>\d{4}-\d{2}-\d{2})")
 
@@ -36,6 +44,11 @@ def _parser() -> argparse.ArgumentParser:
         "--final",
         action="store_true",
         help="Return failed instead of waiting when the digest is unavailable.",
+    )
+    check.add_argument(
+        "--strategy",
+        choices=SUPPORTED_STRATEGIES,
+        help="Only deliver stocks passing this Auto-scan strategy.",
     )
 
     mark = subparsers.add_parser("mark-sent", help="Record a successful delivery.")
@@ -90,9 +103,12 @@ def _write_private_text(path: Path, value: str) -> None:
     path.chmod(0o600)
 
 
-def _run_digest() -> subprocess.CompletedProcess[str]:
+def _run_digest(strategy: str | None = None) -> subprocess.CompletedProcess[str]:
+    command = [str(DIGEST_COMMAND)]
+    if strategy:
+        command.extend(["--strategy", strategy])
     return subprocess.run(
-        [str(DIGEST_COMMAND)],
+        command,
         cwd=ROOT_DIR,
         text=True,
         capture_output=True,
@@ -143,8 +159,8 @@ def _emit(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False))
 
 
-def _check(*, state_file: Path, final: bool) -> int:
-    result = _run_digest()
+def _check(*, state_file: Path, final: bool, strategy: str | None = None) -> int:
+    result = _run_digest(strategy)
     output = result.stdout.strip()
     if result.returncode != 0:
         expected_match = EXPECTED_DATE_RE.search(output)
@@ -246,7 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "check":
-            return _check(state_file=args.state_file, final=args.final)
+            return _check(
+                state_file=args.state_file,
+                final=args.final,
+                strategy=args.strategy,
+            )
         if args.command == "mark-sent":
             return _mark_sent(
                 state_file=args.state_file,

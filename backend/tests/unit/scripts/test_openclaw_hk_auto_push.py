@@ -31,7 +31,7 @@ def test_check_reports_ready(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(
         MODULE,
         "_run_digest",
-        lambda: SimpleNamespace(returncode=0, stdout=DIGEST, stderr=""),
+        lambda strategy=None: SimpleNamespace(returncode=0, stdout=DIGEST, stderr=""),
     )
 
     assert MODULE.main(["--state-file", str(tmp_path / "state.json"), "check"]) == 0
@@ -49,7 +49,7 @@ def test_mark_sent_makes_followup_check_idempotent(monkeypatch, tmp_path, capsys
     monkeypatch.setattr(
         MODULE,
         "_run_digest",
-        lambda: SimpleNamespace(returncode=0, stdout=DIGEST, stderr=""),
+        lambda strategy=None: SimpleNamespace(returncode=0, stdout=DIGEST, stderr=""),
     )
 
     assert MODULE.main(
@@ -73,7 +73,7 @@ def test_unavailable_digest_waits_until_final_check(monkeypatch, tmp_path, capsy
     monkeypatch.setattr(
         MODULE,
         "_run_digest",
-        lambda: SimpleNamespace(
+        lambda strategy=None: SimpleNamespace(
             returncode=2,
             stdout=(
                 "港股 Auto 选股暂不可用：最近结果日期为 2026-06-17，"
@@ -90,6 +90,29 @@ def test_unavailable_digest_waits_until_final_check(monkeypatch, tmp_path, capsy
     payload = _payload(capsys)
     assert payload["status"] == "failed"
     assert payload["expected_date"] == "2026-06-18"
+
+
+def test_check_forwards_requested_strategy(monkeypatch, tmp_path, capsys):
+    requested = []
+
+    def fake_digest(strategy=None):
+        requested.append(strategy)
+        return SimpleNamespace(returncode=0, stdout=DIGEST, stderr="")
+
+    monkeypatch.setattr(MODULE, "_run_digest", fake_digest)
+
+    assert MODULE.main(
+        [
+            "--state-file",
+            str(tmp_path / "state.json"),
+            "check",
+            "--strategy",
+            "volume_breakthrough",
+        ]
+    ) == 0
+
+    assert _payload(capsys)["status"] == "ready"
+    assert requested == ["volume_breakthrough"]
 
 
 def test_deliver_sends_file_and_records_success(monkeypatch, tmp_path, capsys):
