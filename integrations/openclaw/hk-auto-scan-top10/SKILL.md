@@ -1,6 +1,6 @@
 ---
 name: hk-auto-scan-top10
-description: Read the latest completed Hong Kong Auto scan from the local stock-screener project and return the Top 10 stocks that passed at least one strategy. Use when the user asks for 港股 Auto 选股, HK Auto Top 10, 今日港股选股, or the latest local HK scanner leaders.
+description: Read the latest completed Hong Kong Auto scan and return the default combined Top 10 or a Top 10 filtered to one requested strategy. Use for 港股 Auto 选股, HK Auto Top 10, 今日港股选股, Minervini, CANSLIM, IPO, Custom, 放量突破, or Setup Engine requests.
 user-invocable: true
 metadata: {"openclaw":{"requires":{"bins":["docker"]}}}
 ---
@@ -12,6 +12,19 @@ Run the deterministic local digest command:
 ```bash
 /Users/ryan/Projects/stock-screener/scripts/openclaw-hk-top10.sh
 ```
+
+Default to the command above for combined Auto Scan results. When the user
+explicitly requests one strategy, append exactly one of these parameters:
+
+- Minervini: `--strategy minervini`
+- CANSLIM: `--strategy canslim`
+- IPO: `--strategy ipo`
+- Custom: `--strategy custom`
+- Volume Breakthrough / 放量突破: `--strategy volume_breakthrough`
+- Setup Engine: `--strategy setup_engine`
+
+Do not combine strategies and do not infer a strategy when the user asks for
+Auto Scan without naming one.
 
 Use the command output as the sole source for symbols, ordering, scores,
 ratings, strategy counts, RS, stage, prices, dates, and totals. Do not replace

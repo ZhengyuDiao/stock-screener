@@ -9,6 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from app.use_cases.scanning.build_auto_scan_digest import (
     AutoScanDigestStaleError,
     AutoScanDigestUnavailableError,
+    SUPPORTED_AUTO_SCAN_STRATEGIES,
     build_auto_scan_digest,
     format_auto_scan_digest,
 )
@@ -20,6 +21,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--market", default="HK", help="Market code (default: HK)")
     parser.add_argument("--top", type=int, default=10, help="Maximum rows (default: 10)")
+    parser.add_argument(
+        "--strategy",
+        choices=SUPPORTED_AUTO_SCAN_STRATEGIES,
+        help="Only include stocks passing this strategy and rank by its score.",
+    )
     parser.add_argument(
         "--allow-stale",
         action="store_true",
@@ -49,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             expected_date=expected_date,
             limit=args.top,
             allow_stale=args.allow_stale,
+            strategy=args.strategy,
         )
     except AutoScanDigestStaleError as exc:
         print(

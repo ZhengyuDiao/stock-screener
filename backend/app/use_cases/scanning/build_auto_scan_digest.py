@@ -15,6 +15,25 @@ from app.domain.common.query import (
 from app.domain.common.uow import UnitOfWork
 
 
+SUPPORTED_AUTO_SCAN_STRATEGIES = (
+    "minervini",
+    "canslim",
+    "ipo",
+    "custom",
+    "volume_breakthrough",
+    "setup_engine",
+)
+
+STRATEGY_LABELS = {
+    "minervini": "Minervini",
+    "canslim": "CANSLIM",
+    "ipo": "IPO",
+    "custom": "Custom",
+    "volume_breakthrough": "放量突破",
+    "setup_engine": "Setup Engine",
+}
+
+
 class AutoScanDigestUnavailableError(RuntimeError):
     """Raised when no completed automatic scan can produce a digest."""
 
@@ -44,6 +63,7 @@ class AutoScanDigestItem:
     stage: int | None
     screeners_passed: int
     screeners_total: int
+    strategy_score: float | None
 
 
 @dataclass(frozen=True)
@@ -55,6 +75,7 @@ class AutoScanDigest:
     total_scanned: int
     total_matches: int
     requested_limit: int
+    strategy: str | None
     items: tuple[AutoScanDigestItem, ...]
 
     @property
@@ -69,6 +90,7 @@ def build_auto_scan_digest(
     expected_date: date,
     limit: int = 10,
     allow_stale: bool = False,
+    strategy: str | None = None,
 ) -> AutoScanDigest:
     """Return top-ranked stocks that passed at least one Auto-scan strategy."""
     market_code = str(market).strip().upper()
@@ -76,6 +98,10 @@ def build_auto_scan_digest(
         raise ValueError("market is required")
     if not 1 <= limit <= 100:
         raise ValueError("limit must be between 1 and 100")
+    strategy_code = str(strategy).strip().lower() if strategy else None
+    if strategy_code is not None and strategy_code not in SUPPORTED_AUTO_SCAN_STRATEGIES:
+        supported = ", ".join(SUPPORTED_AUTO_SCAN_STRATEGIES)
+        raise ValueError(f"Unsupported strategy '{strategy}'. Supported: {supported}")
 
     with uow:
         scans = [
@@ -112,12 +138,18 @@ def build_auto_scan_digest(
                 expected_date=expected_date,
             )
 
-        filters = FilterSpec().add_range("passes_count", min_value=1)
+        filters = FilterSpec()
+        sort_field = "composite_score"
+        if strategy_code:
+            filters.add_boolean(f"{strategy_code}_passes", True)
+            sort_field = f"{strategy_code}_score"
+        else:
+            filters.add_range("passes_count", min_value=1)
         page = uow.feature_store.query_run_as_scan_results(
             scan.feature_run_id,
             QuerySpec(
                 filters=filters,
-                sort=SortSpec(field="composite_score", order=SortOrder.DESC),
+                sort=SortSpec(field=sort_field, order=SortOrder.DESC),
                 page=PageSpec(page=1, per_page=limit),
             ),
             include_sparklines=False,
@@ -136,6 +168,11 @@ def build_auto_scan_digest(
                 stage=item.extended_fields.get("stage"),
                 screeners_passed=item.screeners_passed,
                 screeners_total=item.screeners_total,
+                strategy_score=(
+                    item.extended_fields.get(f"{strategy_code}_score")
+                    if strategy_code
+                    else None
+                ),
             )
             for item in page.items
         )
@@ -148,6 +185,7 @@ def build_auto_scan_digest(
             total_scanned=int(scan.total_stocks or 0),
             total_matches=page.total,
             requested_limit=limit,
+            strategy=strategy_code,
             items=items,
         )
 
@@ -162,31 +200,42 @@ def format_auto_scan_digest(digest: AutoScanDigest) -> str:
     """Render a concise Chinese digest suitable for an IM message."""
     market_labels = {"HK": "港股"}
     market_label = market_labels.get(digest.market, digest.market)
+    strategy_label = STRATEGY_LABELS.get(digest.strategy or "")
+    title_mode = strategy_label or "Auto"
     lines = [
-        f"{market_label} Auto 选股 Top {digest.requested_limit}｜{digest.as_of_date.isoformat()}"
+        f"{market_label} {title_mode} 选股 Top {digest.requested_limit}"
+        f"｜{digest.as_of_date.isoformat()}"
     ]
     if digest.is_stale:
         lines.append(
             f"注意：这是最近一次历史结果，最新交易日应为 {digest.expected_date.isoformat()}。"
         )
-    lines.extend(
-        [
-            f"扫描 {digest.total_scanned:,} 只｜至少一项策略通过共 {digest.total_matches} 只",
-            "",
-        ]
+    match_summary = (
+        f"通过 {strategy_label} 共 {digest.total_matches} 只"
+        if strategy_label
+        else f"至少一项策略通过共 {digest.total_matches} 只"
     )
+    lines.extend([f"扫描 {digest.total_scanned:,} 只｜{match_summary}", ""])
 
     if not digest.items:
-        lines.append("本次没有任何股票通过底层扫描策略。")
+        if strategy_label:
+            lines.append(f"本次没有股票通过 {strategy_label} 策略。")
+        else:
+            lines.append("本次没有任何股票通过底层扫描策略。")
     else:
         for index, item in enumerate(digest.items, start=1):
             name = f" {item.company_name}" if item.company_name else ""
             price = _format_decimal(item.current_price, digits=2)
             currency = f" {item.currency}" if item.currency else ""
+            strategy_prefix = (
+                f"{strategy_label} {_format_decimal(item.strategy_score)}｜"
+                if strategy_label
+                else ""
+            )
             lines.extend(
                 [
                     f"{index}. {item.symbol}{name}",
-                    "   "
+                    f"   {strategy_prefix}"
                     f"综合 {_format_decimal(item.composite_score)}｜{item.rating}"
                     f"｜策略 {item.screeners_passed}/{item.screeners_total}"
                     f"｜RS {_format_decimal(item.rs_rating)}｜Stage {item.stage or '-'}"

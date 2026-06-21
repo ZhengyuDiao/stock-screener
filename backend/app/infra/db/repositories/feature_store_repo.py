@@ -757,6 +757,7 @@ def _map_feature_to_scan_result(
         "ipo_score": d.get("ipo_score"),
         "custom_score": d.get("custom_score"),
         "volume_breakthrough_score": d.get("volume_breakthrough_score"),
+        "setup_engine_score": d.get("setup_engine_score"),
         "rs_rating": d.get("rs_rating"),
         "rs_rating_1m": d.get("rs_rating_1m"),
         "rs_rating_3m": d.get("rs_rating_3m"),

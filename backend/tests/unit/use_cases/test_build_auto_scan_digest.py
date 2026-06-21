@@ -63,6 +63,7 @@ def _item(symbol="0700.HK", **extended):
             "currency": "HKD",
             "rs_rating": 91.0,
             "stage": 2,
+            "minervini_score": 94.0,
             **extended,
         },
     )
@@ -114,6 +115,51 @@ def test_rejects_stale_auto_scan_by_default():
 
     assert exc_info.value.actual_date == date(2026, 6, 16)
     assert uow.query_calls == []
+
+
+def test_filters_and_ranks_by_requested_strategy():
+    expected = date(2026, 6, 19)
+    page = ResultPage(items=(_item(),), total=4, page=1, per_page=10)
+    uow = FakeUow(
+        scans=[_scan()],
+        feature_run=SimpleNamespace(as_of_date=expected),
+        page=page,
+    )
+
+    digest = build_auto_scan_digest(
+        uow,
+        market="HK",
+        expected_date=expected,
+        strategy="minervini",
+    )
+
+    _, query_spec, _ = uow.query_calls[0]
+    assert digest.strategy == "minervini"
+    assert digest.total_matches == 4
+    assert digest.items[0].strategy_score == 94.0
+    assert query_spec.filters.boolean_filters[0].field == "minervini_passes"
+    assert query_spec.filters.boolean_filters[0].value is True
+    assert query_spec.sort.field == "minervini_score"
+    rendered = format_auto_scan_digest(digest)
+    assert "港股 Minervini 选股 Top 10" in rendered
+    assert "通过 Minervini 共 4 只" in rendered
+    assert "Minervini 94.0｜综合 86.4" in rendered
+
+
+def test_rejects_unknown_strategy():
+    uow = FakeUow(
+        scans=[_scan()],
+        feature_run=SimpleNamespace(as_of_date=date(2026, 6, 19)),
+        page=ResultPage(items=(), total=0, page=1, per_page=10),
+    )
+
+    with pytest.raises(ValueError, match="Unsupported strategy"):
+        build_auto_scan_digest(
+            uow,
+            market="HK",
+            expected_date=date(2026, 6, 19),
+            strategy="unknown",
+        )
 
 
 def test_selects_newest_market_date_when_older_backfill_was_published_last():

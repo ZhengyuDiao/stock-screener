@@ -51,6 +51,14 @@ _JSON_FIELD_MAP: dict[str, tuple[str, ...]] = {
     "ipo_score": ("ipo_score",),
     "custom_score": ("custom_score",),
     "volume_breakthrough_score": ("volume_breakthrough_score",),
+    "setup_engine_score": ("setup_engine_score",),
+    # Per-screener pass flags
+    "minervini_passes": ("minervini_passes",),
+    "canslim_passes": ("canslim_passes",),
+    "ipo_passes": ("ipo_passes",),
+    "custom_passes": ("custom_passes",),
+    "volume_breakthrough_passes": ("volume_breakthrough_passes",),
+    "setup_engine_passes": ("setup_engine_passes",),
     # Price / volume
     "price": ("current_price",),
     "current_price": ("current_price",),
@@ -153,6 +161,8 @@ _JSON_FIELD_MAP: dict[str, tuple[str, ...]] = {
 # Scoped to VCP numeric + all se_* numeric fields only; existing fields
 # (minervini_score, price, etc.) continue to sort without cast.
 _JSON_SORT_NUMERIC: frozenset[str] = frozenset({
+    "minervini_score", "canslim_score", "ipo_score", "custom_score",
+    "volume_breakthrough_score", "setup_engine_score",
     "vcp_score", "vcp_pivot",
     "se_setup_score", "se_quality_score", "se_readiness_score",
     "se_pattern_confidence", "se_pivot_price", "se_distance_to_pivot_pct",
