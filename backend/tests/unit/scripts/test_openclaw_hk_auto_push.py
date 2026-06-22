@@ -117,13 +117,28 @@ def test_check_forwards_requested_strategy(monkeypatch, tmp_path, capsys):
 
 def test_deliver_sends_file_and_records_success(monkeypatch, tmp_path, capsys):
     state_file = tmp_path / "state.json"
+    delivery_config = tmp_path / "delivery.json"
+    delivery_config.write_text(
+        json.dumps(
+            {
+                "channel": "openclaw-weixin",
+                "account": "account-1",
+                "target": "user@im.wechat",
+            }
+        )
+    )
+    monkeypatch.setattr(MODULE, "DEFAULT_DELIVERY_CONFIG", delivery_config)
     message_file = MODULE._pending_message_path(state_file, "scan-hk-0618")
     MODULE._write_private_text(message_file, DIGEST)
     sent = {}
 
     def fake_send(**kwargs):
         sent.update(kwargs)
-        return SimpleNamespace(returncode=0, stdout="{}", stderr="")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"messageId": "weixin-message-1"}),
+            stderr="",
+        )
 
     monkeypatch.setattr(MODULE, "_send_message", fake_send)
     assert MODULE.main(
@@ -137,17 +152,60 @@ def test_deliver_sends_file_and_records_success(monkeypatch, tmp_path, capsys):
             "scan-hk-0618",
             "--message-file",
             str(message_file),
-            "--channel",
-            "openclaw-weixin",
-            "--account",
-            "account-1",
-            "--target",
-            "user@im.wechat",
         ]
     ) == 0
 
-    assert _payload(capsys)["status"] == "delivered"
+    payload = _payload(capsys)
+    assert payload["status"] == "delivered"
+    assert payload["message_id"] == "weixin-message-1"
     assert sent["message"] == DIGEST
+    assert sent["channel"] == "openclaw-weixin"
+    assert sent["account"] == "account-1"
+    assert sent["target"] == "user@im.wechat"
+    assert sent["idempotency_key"] == "stock-screener-hk:scan-hk-0618"
     assert sent["dry_run"] is False
     assert json.loads(state_file.read_text())["last_sent"]["scan_id"] == "scan-hk-0618"
     assert not message_file.exists()
+
+
+def test_deliver_does_not_record_success_without_gateway_receipt(
+    monkeypatch, tmp_path, capsys
+):
+    state_file = tmp_path / "state.json"
+    delivery_config = tmp_path / "delivery.json"
+    delivery_config.write_text(
+        json.dumps(
+            {
+                "channel": "openclaw-weixin",
+                "account": "account-1",
+                "target": "user@im.wechat",
+            }
+        )
+    )
+    monkeypatch.setattr(MODULE, "DEFAULT_DELIVERY_CONFIG", delivery_config)
+    message_file = MODULE._pending_message_path(state_file, "scan-hk-0618")
+    MODULE._write_private_text(message_file, DIGEST)
+    monkeypatch.setattr(
+        MODULE,
+        "_send_message",
+        lambda **kwargs: SimpleNamespace(returncode=0, stdout="{}", stderr=""),
+    )
+
+    result = MODULE.main(
+        [
+            "--state-file",
+            str(state_file),
+            "deliver",
+            "--as-of-date",
+            "2026-06-18",
+            "--scan-id",
+            "scan-hk-0618",
+            "--message-file",
+            str(message_file),
+        ]
+    )
+
+    assert result == 1
+    assert _payload(capsys)["status"] == "error"
+    assert not state_file.exists()
+    assert message_file.exists()

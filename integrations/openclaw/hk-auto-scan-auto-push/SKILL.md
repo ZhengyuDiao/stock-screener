@@ -13,7 +13,7 @@ python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py \
   check --strategy volume_breakthrough
 ```
 
-For the 22:00 final check, run `check --final --strategy volume_breakthrough`.
+For the 23:00 final check, run `check --final --strategy volume_breakthrough`.
 Parse the single JSON object printed by the command. Never omit or replace the
 strategy argument in scheduled executions.
 
@@ -35,15 +35,16 @@ For a ready digest, improve company names conservatively before sending:
 
 If names change, overwrite only `message_file` with the complete localized
 message using the file-writing tool. Do not construct a shell command containing
-the message text. Send through the safe delivery command, using the exact path,
-date, Scan ID, channel, account, and target supplied by the checker and job:
+the message text. Send through the safe delivery command, using only the exact
+path, date, and Scan ID supplied by the checker:
 
 ```bash
 python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py \
-  deliver --as-of-date DATE --scan-id SCAN_ID --message-file MESSAGE_FILE \
-  --channel CHANNEL --account ACCOUNT --target TARGET
+  deliver --as-of-date DATE --scan-id SCAN_ID --message-file MESSAGE_FILE
 ```
 
-The delivery command records success atomically. If sending fails it does not
-mark the scan sent. End every execution with exactly `NO_REPLY` so the scheduler
-does not send a duplicate fallback message.
+The delivery command uses the persistent OpenClaw Gateway, validates its message
+receipt, and records success atomically. The WeChat account and target come from
+the local delivery config so they cannot be mistyped by an agent. If sending
+fails it does not mark the scan sent. End every execution with exactly
+`NO_REPLY` so the scheduler does not send a duplicate fallback message.

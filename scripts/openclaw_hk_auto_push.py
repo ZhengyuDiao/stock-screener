@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_STATE_FILE = ROOT_DIR / "data" / "openclaw" / "hk-auto-push-state.json"
+DEFAULT_DELIVERY_CONFIG = ROOT_DIR / "data" / "openclaw" / "hk-auto-delivery.json"
 DIGEST_COMMAND = ROOT_DIR / "scripts" / "openclaw-hk-top10.sh"
 SUPPORTED_STRATEGIES = (
     "minervini",
@@ -61,9 +62,9 @@ def _parser() -> argparse.ArgumentParser:
     deliver.add_argument("--as-of-date", required=True)
     deliver.add_argument("--scan-id", required=True)
     deliver.add_argument("--message-file", type=Path, required=True)
-    deliver.add_argument("--channel", required=True)
-    deliver.add_argument("--account", required=True)
-    deliver.add_argument("--target", required=True)
+    deliver.add_argument("--channel")
+    deliver.add_argument("--account")
+    deliver.add_argument("--target")
     deliver.add_argument("--dry-run", action="store_true")
 
     subparsers.add_parser("status", help="Show the current delivery state.")
@@ -92,6 +93,27 @@ def _write_state(path: Path, state: dict) -> None:
     temporary.replace(path)
 
 
+def _delivery_settings(
+    *, channel: str | None, account: str | None, target: str | None
+) -> tuple[str, str, str]:
+    if channel and account and target:
+        return channel, account, target
+    try:
+        config = json.loads(DEFAULT_DELIVERY_CONFIG.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(
+            f"Could not read delivery config {DEFAULT_DELIVERY_CONFIG}: {exc}"
+        ) from exc
+    values = (
+        channel or config.get("channel"),
+        account or config.get("account"),
+        target or config.get("target"),
+    )
+    if not all(isinstance(value, str) and value for value in values):
+        raise RuntimeError("Delivery config requires channel, account, and target")
+    return values
+
+
 def _pending_message_path(state_file: Path, scan_id: str) -> Path:
     digest = hashlib.sha256(scan_id.encode("utf-8")).hexdigest()[:16]
     return state_file.parent / f"hk-auto-pending-{digest}.txt"
@@ -117,25 +139,66 @@ def _run_digest(strategy: str | None = None) -> subprocess.CompletedProcess[str]
 
 
 def _send_message(
-    *, channel: str, account: str, target: str, message: str, dry_run: bool
+    *,
+    channel: str | None,
+    account: str | None,
+    target: str | None,
+    message: str,
+    idempotency_key: str,
+    dry_run: bool,
 ) -> subprocess.CompletedProcess[str]:
-    command = [
-        "openclaw",
-        "message",
-        "send",
-        "--channel",
-        channel,
-        "--account",
-        account,
-        "--target",
-        target,
-        "--message",
-        message,
-        "--json",
-    ]
     if dry_run:
-        command.append("--dry-run")
+        command = [
+            "openclaw",
+            "message",
+            "send",
+            "--channel",
+            channel,
+            "--account",
+            account,
+            "--target",
+            target,
+            "--message",
+            message,
+            "--json",
+            "--dry-run",
+        ]
+    else:
+        params = json.dumps(
+            {
+                "to": target,
+                "message": message,
+                "channel": channel,
+                "accountId": account,
+                "idempotencyKey": idempotency_key,
+            },
+            ensure_ascii=False,
+        )
+        command = [
+            "openclaw",
+            "gateway",
+            "call",
+            "send",
+            "--params",
+            params,
+            "--json",
+            "--timeout",
+            "30000",
+        ]
     return subprocess.run(command, text=True, capture_output=True, check=False)
+
+
+def _gateway_message_id(output: str) -> str | None:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    message_id = payload.get("messageId")
+    if not message_id and isinstance(payload.get("payload"), dict):
+        message_id = payload["payload"].get("messageId")
+    return message_id if isinstance(message_id, str) and message_id else None
 
 
 def _parse_digest(output: str) -> tuple[str, str]:
@@ -225,6 +288,9 @@ def _deliver(
     dry_run: bool,
 ) -> int:
     date.fromisoformat(as_of_date)
+    channel, account, target = _delivery_settings(
+        channel=channel, account=account, target=target
+    )
     expected_file = _pending_message_path(state_file, scan_id).resolve()
     if message_file.resolve() != expected_file:
         raise RuntimeError(f"Message file must be {expected_file}")
@@ -237,12 +303,16 @@ def _deliver(
         account=account,
         target=target,
         message=message,
+        idempotency_key=f"stock-screener-hk:{scan_id}",
         dry_run=dry_run,
     )
     if result.returncode != 0:
         raise RuntimeError(
             result.stderr.strip() or result.stdout.strip() or "OpenClaw send failed"
         )
+    message_id = None if dry_run else _gateway_message_id(result.stdout)
+    if not dry_run and not message_id:
+        raise RuntimeError("OpenClaw gateway returned no delivery message ID")
     if not dry_run:
         state = _read_state(state_file)
         state["last_sent"] = {"as_of_date": as_of_date, "scan_id": scan_id}
@@ -253,6 +323,7 @@ def _deliver(
             "status": "dry_run" if dry_run else "delivered",
             "as_of_date": as_of_date,
             "scan_id": scan_id,
+            **({"message_id": message_id} if message_id else {}),
         }
     )
     return 0
