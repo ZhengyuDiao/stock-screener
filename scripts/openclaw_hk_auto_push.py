@@ -303,7 +303,10 @@ def _deliver(
         account=account,
         target=target,
         message=message,
-        idempotency_key=f"stock-screener-hk:{scan_id}",
+        idempotency_key=(
+            f"stock-screener-hk:{scan_id}:"
+            f"{hashlib.sha256(message.encode('utf-8')).hexdigest()[:16]}"
+        ),
         dry_run=dry_run,
     )
     if result.returncode != 0:

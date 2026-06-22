@@ -1,6 +1,6 @@
 ---
 name: hk-auto-scan-auto-push
-description: Poll the local HK Auto scan, deliver the Volume Breakthrough Top 10 digest to the configured WeChat target exactly once, and stay silent while waiting or after delivery. Use only for the scheduled HK Volume Breakthrough push jobs.
+description: Poll the local HK Auto scan, deliver its overall Top 10 digest to the configured WeChat target exactly once, and stay silent while waiting or after delivery. Use only for the scheduled HK Auto push jobs.
 metadata: {"openclaw":{"requires":{"bins":["docker","openclaw","python3"]}}}
 ---
 
@@ -9,13 +9,11 @@ metadata: {"openclaw":{"requires":{"bins":["docker","openclaw","python3"]}}}
 Run the deterministic checker requested by the scheduled job:
 
 ```bash
-python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py \
-  check --strategy volume_breakthrough
+python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py check
 ```
 
-For the 23:00 final check, run `check --final --strategy volume_breakthrough`.
-Parse the single JSON object printed by the command. Never omit or replace the
-strategy argument in scheduled executions.
+For the 23:00 final check, run `check --final`. Parse the single JSON object
+printed by the command. Do not add `--strategy` in scheduled Auto executions.
 
 ## Status handling
 

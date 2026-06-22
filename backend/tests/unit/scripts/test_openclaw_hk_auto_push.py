@@ -162,7 +162,8 @@ def test_deliver_sends_file_and_records_success(monkeypatch, tmp_path, capsys):
     assert sent["channel"] == "openclaw-weixin"
     assert sent["account"] == "account-1"
     assert sent["target"] == "user@im.wechat"
-    assert sent["idempotency_key"] == "stock-screener-hk:scan-hk-0618"
+    digest_hash = MODULE.hashlib.sha256(DIGEST.encode("utf-8")).hexdigest()[:16]
+    assert sent["idempotency_key"] == f"stock-screener-hk:scan-hk-0618:{digest_hash}"
     assert sent["dry_run"] is False
     assert json.loads(state_file.read_text())["last_sent"]["scan_id"] == "scan-hk-0618"
     assert not message_file.exists()
