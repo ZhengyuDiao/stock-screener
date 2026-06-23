@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check and persist delivery state for the OpenClaw HK Auto digest."""
+"""Check and persist delivery state for OpenClaw market Auto digests."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_STATE_FILE = ROOT_DIR / "data" / "openclaw" / "hk-auto-push-state.json"
+DEFAULT_STATE_DIR = ROOT_DIR / "data" / "openclaw"
+DEFAULT_STATE_FILE = DEFAULT_STATE_DIR / "hk-auto-push-state.json"
 DEFAULT_DELIVERY_CONFIG = ROOT_DIR / "data" / "openclaw" / "hk-auto-delivery.json"
-DIGEST_COMMAND = ROOT_DIR / "scripts" / "openclaw-hk-top10.sh"
 SUPPORTED_STRATEGIES = (
     "minervini",
     "canslim",
@@ -25,17 +25,35 @@ SUPPORTED_STRATEGIES = (
     "volume_breakthrough",
     "setup_engine",
 )
-HEADER_RE = re.compile(r"^港股 .+?选股 Top \d+｜(?P<date>\d{4}-\d{2}-\d{2})$")
+HEADER_RE = re.compile(r"^.+?选股 Top \d+｜(?P<date>\d{4}-\d{2}-\d{2})$")
 SCAN_ID_RE = re.compile(r"^Scan ID: (?P<scan_id>\S+)$")
 EXPECTED_DATE_RE = re.compile(r"最新交易日应为 (?P<date>\d{4}-\d{2}-\d{2})")
+
+
+def _normalize_market(market: str) -> str:
+    value = str(market or "").strip().upper()
+    if not value:
+        raise RuntimeError("Market is required")
+    if not re.fullmatch(r"[A-Z0-9]{1,8}", value):
+        raise RuntimeError(f"Invalid market code: {market}")
+    return value
+
+
+def _default_state_file(market: str) -> Path:
+    return DEFAULT_STATE_DIR / f"{market.lower()}-auto-push-state.json"
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--market",
+        default="HK",
+        help="Market code for the Auto digest (default: HK).",
+    )
+    parser.add_argument(
         "--state-file",
         type=Path,
-        default=DEFAULT_STATE_FILE,
+        default=None,
         help="Delivery state JSON path.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -114,9 +132,9 @@ def _delivery_settings(
     return values
 
 
-def _pending_message_path(state_file: Path, scan_id: str) -> Path:
+def _pending_message_path(state_file: Path, scan_id: str, market: str = "HK") -> Path:
     digest = hashlib.sha256(scan_id.encode("utf-8")).hexdigest()[:16]
-    return state_file.parent / f"hk-auto-pending-{digest}.txt"
+    return state_file.parent / f"{market.lower()}-auto-pending-{digest}.txt"
 
 
 def _write_private_text(path: Path, value: str) -> None:
@@ -125,8 +143,23 @@ def _write_private_text(path: Path, value: str) -> None:
     path.chmod(0o600)
 
 
-def _run_digest(strategy: str | None = None) -> subprocess.CompletedProcess[str]:
-    command = [str(DIGEST_COMMAND)]
+def _run_digest(
+    *, market: str, strategy: str | None = None
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "backend",
+        "python",
+        "-m",
+        "app.scripts.daily_scan_digest",
+        "--market",
+        market,
+        "--top",
+        "10",
+    ]
     if strategy:
         command.extend(["--strategy", strategy])
     return subprocess.run(
@@ -222,13 +255,16 @@ def _emit(payload: dict) -> None:
     print(json.dumps(payload, ensure_ascii=False))
 
 
-def _check(*, state_file: Path, final: bool, strategy: str | None = None) -> int:
-    result = _run_digest(strategy)
+def _check(
+    *, market: str, state_file: Path, final: bool, strategy: str | None = None
+) -> int:
+    result = _run_digest(market=market, strategy=strategy)
     output = result.stdout.strip()
     if result.returncode != 0:
         expected_match = EXPECTED_DATE_RE.search(output)
         payload = {
             "status": "failed" if final else "waiting",
+            "market": market,
             "expected_date": expected_match.group("date") if expected_match else None,
             "reason": output or result.stderr.strip() or f"digest exited {result.returncode}",
         }
@@ -239,7 +275,13 @@ def _check(*, state_file: Path, final: bool, strategy: str | None = None) -> int
         as_of_date, scan_id = _parse_digest(output)
         state = _read_state(state_file)
     except RuntimeError as exc:
-        _emit({"status": "failed" if final else "waiting", "reason": str(exc)})
+        _emit(
+            {
+                "status": "failed" if final else "waiting",
+                "market": market,
+                "reason": str(exc),
+            }
+        )
         return 0
 
     last_sent = state.get("last_sent") or {}
@@ -247,17 +289,19 @@ def _check(*, state_file: Path, final: bool, strategy: str | None = None) -> int
         _emit(
             {
                 "status": "already_sent",
+                "market": market,
                 "as_of_date": as_of_date,
                 "scan_id": scan_id,
             }
         )
         return 0
 
-    message_file = _pending_message_path(state_file, scan_id)
+    message_file = _pending_message_path(state_file, scan_id, market)
     _write_private_text(message_file, output)
     _emit(
         {
             "status": "ready",
+            "market": market,
             "as_of_date": as_of_date,
             "scan_id": scan_id,
             "message": output,
@@ -267,17 +311,18 @@ def _check(*, state_file: Path, final: bool, strategy: str | None = None) -> int
     return 0
 
 
-def _mark_sent(*, state_file: Path, as_of_date: str, scan_id: str) -> int:
+def _mark_sent(*, market: str, state_file: Path, as_of_date: str, scan_id: str) -> int:
     date.fromisoformat(as_of_date)
     state = _read_state(state_file)
     state["last_sent"] = {"as_of_date": as_of_date, "scan_id": scan_id}
     _write_state(state_file, state)
-    _emit({"status": "marked_sent", **state["last_sent"]})
+    _emit({"status": "marked_sent", "market": market, **state["last_sent"]})
     return 0
 
 
 def _deliver(
     *,
+    market: str,
     state_file: Path,
     as_of_date: str,
     scan_id: str,
@@ -291,7 +336,7 @@ def _deliver(
     channel, account, target = _delivery_settings(
         channel=channel, account=account, target=target
     )
-    expected_file = _pending_message_path(state_file, scan_id).resolve()
+    expected_file = _pending_message_path(state_file, scan_id, market).resolve()
     if message_file.resolve() != expected_file:
         raise RuntimeError(f"Message file must be {expected_file}")
     message = message_file.read_text(encoding="utf-8").strip()
@@ -304,7 +349,7 @@ def _deliver(
         target=target,
         message=message,
         idempotency_key=(
-            f"stock-screener-hk:{scan_id}:"
+            f"stock-screener-{market.lower()}:{scan_id}:"
             f"{hashlib.sha256(message.encode('utf-8')).hexdigest()[:16]}"
         ),
         dry_run=dry_run,
@@ -324,6 +369,7 @@ def _deliver(
     _emit(
         {
             "status": "dry_run" if dry_run else "delivered",
+            "market": market,
             "as_of_date": as_of_date,
             "scan_id": scan_id,
             **({"message_id": message_id} if message_id else {}),
@@ -335,21 +381,26 @@ def _deliver(
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        market = _normalize_market(args.market)
+        state_file = args.state_file or _default_state_file(market)
         if args.command == "check":
             return _check(
-                state_file=args.state_file,
+                market=market,
+                state_file=state_file,
                 final=args.final,
                 strategy=args.strategy,
             )
         if args.command == "mark-sent":
             return _mark_sent(
-                state_file=args.state_file,
+                market=market,
+                state_file=state_file,
                 as_of_date=args.as_of_date,
                 scan_id=args.scan_id,
             )
         if args.command == "deliver":
             return _deliver(
-                state_file=args.state_file,
+                market=market,
+                state_file=state_file,
                 as_of_date=args.as_of_date,
                 scan_id=args.scan_id,
                 message_file=args.message_file,
@@ -358,7 +409,7 @@ def main(argv: list[str] | None = None) -> int:
                 target=args.target,
                 dry_run=args.dry_run,
             )
-        _emit({"status": "ok", "state": _read_state(args.state_file)})
+        _emit({"status": "ok", "market": market, "state": _read_state(state_file)})
         return 0
     except (OSError, RuntimeError, ValueError) as exc:
         _emit({"status": "error", "reason": str(exc)})

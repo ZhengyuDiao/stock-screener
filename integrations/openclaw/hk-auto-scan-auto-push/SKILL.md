@@ -9,7 +9,7 @@ metadata: {"openclaw":{"requires":{"bins":["docker","openclaw","python3"]}}}
 Run the deterministic checker requested by the scheduled job:
 
 ```bash
-python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py check
+python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py --market HK check
 ```
 
 For the 23:00 final check, run `check --final`. Parse the single JSON object
@@ -38,7 +38,7 @@ path, date, and Scan ID supplied by the checker:
 
 ```bash
 python3 /Users/ryan/Projects/stock-screener/scripts/openclaw_hk_auto_push.py \
-  deliver --as-of-date DATE --scan-id SCAN_ID --message-file MESSAGE_FILE
+  --market HK deliver --as-of-date DATE --scan-id SCAN_ID --message-file MESSAGE_FILE
 ```
 
 The delivery command uses the persistent OpenClaw Gateway, validates its message

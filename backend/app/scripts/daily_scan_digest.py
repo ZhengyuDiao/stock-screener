@@ -9,6 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from app.use_cases.scanning.build_auto_scan_digest import (
     AutoScanDigestStaleError,
     AutoScanDigestUnavailableError,
+    market_label_for_digest,
     SUPPORTED_AUTO_SCAN_STRATEGIES,
     build_auto_scan_digest,
     format_auto_scan_digest,
@@ -37,6 +38,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     market = str(args.market).strip().upper()
+    market_label = market_label_for_digest(market)
     # Runtime bootstrap prints migration and screener registration chatter.
     # Keep stdout reserved for the IM-ready digest contract.
     with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
@@ -59,13 +61,13 @@ def main(argv: list[str] | None = None) -> int:
         )
     except AutoScanDigestStaleError as exc:
         print(
-            "港股 Auto 选股暂不可用："
+            f"{market_label} Auto 选股暂不可用："
             f"最近结果日期为 {exc.actual_date.isoformat()}，"
             f"最新交易日应为 {exc.expected_date.isoformat()}。请先等待日度 pipeline 完成。"
         )
         return 2
     except AutoScanDigestUnavailableError as exc:
-        print(f"港股 Auto 选股暂不可用：{exc}")
+        print(f"{market_label} Auto 选股暂不可用：{exc}")
         return 2
 
     print(format_auto_scan_digest(digest))

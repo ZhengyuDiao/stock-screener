@@ -33,6 +33,17 @@ STRATEGY_LABELS = {
     "setup_engine": "Setup Engine",
 }
 
+MARKET_DIGEST_LABELS = {
+    "CN": "A股",
+    "HK": "港股",
+    "US": "美股",
+}
+
+
+def market_label_for_digest(market: str) -> str:
+    market_code = str(market).strip().upper()
+    return MARKET_DIGEST_LABELS.get(market_code, market_code)
+
 
 class AutoScanDigestUnavailableError(RuntimeError):
     """Raised when no completed automatic scan can produce a digest."""
@@ -198,8 +209,7 @@ def _format_decimal(value: float | None, *, digits: int = 1) -> str:
 
 def format_auto_scan_digest(digest: AutoScanDigest) -> str:
     """Render a concise Chinese digest suitable for an IM message."""
-    market_labels = {"HK": "港股"}
-    market_label = market_labels.get(digest.market, digest.market)
+    market_label = market_label_for_digest(digest.market)
     strategy_label = STRATEGY_LABELS.get(digest.strategy or "")
     title_mode = strategy_label or "Auto"
     lines = [
